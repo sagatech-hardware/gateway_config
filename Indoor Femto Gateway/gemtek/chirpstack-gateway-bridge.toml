@@ -15,6 +15,20 @@ log_to_syslog=false
 # will be performed by the Packet Forwarder or ChirpStack Gateway Bridge.
 [filters]
 
+
+# Filtrar mensagens por DevAddr específicos
+# Apenas mensagens com estes DevAddrs serão encaminhadas
+# Formato: hexadecimal de 8 caracteres (4 bytes)
+#
+# Exemplos:
+dev_addrs=[
+  "22xxxxxx",   # Dispositivo 1
+  "19xxxxxx",   # Dispositivo 2
+  "16xxxxxx",   # Dispositivo 3
+  "30xxxxxx", 	# Dispositivo 4
+]
+
+
 # NetIDs filters.
 #
 # The configured NetIDs will be used to filter uplink data frames.
