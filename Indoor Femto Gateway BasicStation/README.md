@@ -31,8 +31,9 @@ registered gateway by changing one value (`ROUTER_ID`) in its `.env`.
    itself**, which is why the bridge runs on-device.
 2. **Uplink.** Receives `PUSH_DATA`/`rxpk` from the local packet forwarder,
    parses the PHYPayload, and forwards it as a BasicStation `updf`/`jreq`.
-3. **Downlink.** Receives BasicStation `dnmsg`, renders it as a Semtech `txpk`,
-   and returns it as `PULL_RESP` *(next release)*.
+3. **Downlink.** Receives BasicStation `dnmsg`, renders it as a Semtech `txpk`
+   (RX1 window via `xtime + RxDelay`, or immediate for class C), and returns it
+   as `PULL_RESP`.
 
 ## Quick start
 
@@ -61,6 +62,7 @@ committed `.env`). Any key can be overridden by a process environment variable.
 | `LNS_URI`       | set to skip CUPS and dial this LNS directly with cached certs |
 | `TC_DIR`        | where `tc.*` are cached / dropped manually                    |
 | `UDP_LISTEN`    | address the local packet forwarder targets                    |
+| `REGION`        | LoRaWAN region seeding the datr↔DR map: `US915`/`AU915`/`EU868` |
 
 **Manual credentials.** If your LNS lets you download the gateway's
 `tc.crt`/`tc.key`, drop them (plus `tc.trust`, `tc.uri`) into `TC_DIR` and the
@@ -79,8 +81,9 @@ make test vet     # host-side checks
 - [x] Semtech-UDP server (local packet-forwarder side)
 - [x] BasicStation WebSocket client (`version` → `router_config`)
 - [x] Uplink translation `rxpk` → `updf`/`jreq`
-- [ ] Downlink translation `dnmsg` → `txpk` (RX1/RX2 timing)
-- [ ] On-device validation against ThingPark (CUPS provisioning, LNS discovery)
+- [x] Downlink translation `dnmsg` → `txpk` (RX1 window / class C)
+- [x] RX2-window fallback on RX1 miss (driven by TX_ACK)
+- [ ] On-device validation against ThingPark (CUPS provisioning, LNS discovery, xtime timing)
 
 ## License
 

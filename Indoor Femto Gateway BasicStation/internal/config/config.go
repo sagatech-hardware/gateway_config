@@ -28,6 +28,7 @@ type Config struct {
 	LNSURI       string // LNS_URI        — set to skip CUPS and dial this LNS directly
 	TCDir        string // TC_DIR         — where tc.* are cached / dropped manually
 	UDPListen    string // UDP_LISTEN     — address the local packet forwarder targets
+	Region       string // REGION         — AU915 | US915 | EU868 (seeds datr↔DR)
 	Model        string // MODEL          — reported to CUPS
 }
 
@@ -37,6 +38,7 @@ func defaults() Config {
 		CUPSURI:      DefaultCUPSURI,
 		TCDir:        "/mnt/data/pktfwd-station-bridge/tc",
 		UDPListen:    "127.0.0.1:1700",
+		Region:       "US915",
 		Model:        "WLRGFM-100",
 	}
 }
@@ -113,7 +115,7 @@ func parseEnvLine(line string) (key, val string, ok bool) {
 }
 
 func applyProcessEnv(cfg *Config) {
-	for _, key := range []string{"ROUTER_ID", "ROUTER_FORMAT", "CUPS_URI", "TRUST_CA_PATH", "LNS_URI", "TC_DIR", "UDP_LISTEN", "MODEL"} {
+	for _, key := range []string{"ROUTER_ID", "ROUTER_FORMAT", "CUPS_URI", "TRUST_CA_PATH", "LNS_URI", "TC_DIR", "UDP_LISTEN", "REGION", "MODEL"} {
 		if v, present := os.LookupEnv(key); present {
 			setField(cfg, key, v)
 		}
@@ -136,6 +138,8 @@ func setField(cfg *Config, key, val string) {
 		cfg.TCDir = val
 	case "UDP_LISTEN":
 		cfg.UDPListen = val
+	case "REGION":
+		cfg.Region = val
 	case "MODEL":
 		cfg.Model = val
 	}

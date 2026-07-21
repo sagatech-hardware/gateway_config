@@ -16,6 +16,7 @@ USER=root
 PASS=root
 ROUTER=""
 CUPS_URI="https://thingparkenterprise.sa.actility.com:443"
+REGION=US915
 UDP_PORT=1700
 BIN=""
 INSTALL_DIR=/mnt/data/pktfwd-station-bridge
@@ -33,11 +34,11 @@ EOF
 	exit 2
 }
 
-while getopts "g:u:p:e:c:P:b:d:h" opt; do
+while getopts "g:u:p:e:c:r:P:b:d:h" opt; do
 	case "$opt" in
 	g) GW="$OPTARG" ;; u) USER="$OPTARG" ;; p) PASS="$OPTARG" ;;
-	e) ROUTER="$OPTARG" ;; c) CUPS_URI="$OPTARG" ;; P) UDP_PORT="$OPTARG" ;;
-	b) BIN="$OPTARG" ;; d) INSTALL_DIR="$OPTARG" ;; *) usage ;;
+	e) ROUTER="$OPTARG" ;; c) CUPS_URI="$OPTARG" ;; r) REGION="$OPTARG" ;;
+	P) UDP_PORT="$OPTARG" ;; b) BIN="$OPTARG" ;; d) INSTALL_DIR="$OPTARG" ;; *) usage ;;
 	esac
 done
 [ -n "$ROUTER" ] || { echo "error: -e <routerId> required" >&2; usage; }
@@ -83,6 +84,7 @@ CUPS_URI=$CUPS_URI
 LNS_URI=
 UDP_LISTEN=127.0.0.1:$UDP_PORT
 TC_DIR=$TCDIR
+REGION=$REGION
 MODEL=WLRGFM-100
 EOF
 push "$ENV_TMP" "$INSTALL_DIR/.env"

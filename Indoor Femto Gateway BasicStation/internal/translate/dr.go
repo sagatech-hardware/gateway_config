@@ -28,3 +28,27 @@ func drFor(region, datr string) (int, bool) {
 	dr, ok := table[datr]
 	return dr, ok
 }
+
+// Downlink DR → datr. AU915/US915 downlink windows use the BW500 rates DR8-13;
+// the uplink DRs are kept for regions (EU868) that reuse them for downlink.
+var (
+	au915Down = map[int]string{
+		8: "SF12BW500", 9: "SF11BW500", 10: "SF10BW500",
+		11: "SF9BW500", 12: "SF8BW500", 13: "SF7BW500",
+	}
+	drDatr = map[string]map[int]string{
+		"AU915": au915Down,
+		"US915": au915Down,
+		"EU868": {0: "SF12BW125", 1: "SF11BW125", 2: "SF10BW125", 3: "SF9BW125", 4: "SF8BW125", 5: "SF7BW125", 6: "SF7BW250"},
+	}
+)
+
+// datrFor returns the datr string for a downlink data-rate index in a region.
+func datrFor(region string, dr int) (string, bool) {
+	table, ok := drDatr[region]
+	if !ok {
+		table = au915Down
+	}
+	datr, ok := table[dr]
+	return datr, ok
+}

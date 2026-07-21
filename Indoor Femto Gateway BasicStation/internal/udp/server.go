@@ -20,6 +20,8 @@ type Server struct {
 
 	// OnUplink is called for each CRC-valid rxpk received.
 	OnUplink func(RXPacket)
+	// OnTxAck is called for each TX_ACK; errStr is "" on success.
+	OnTxAck func(token [2]byte, errStr string)
 }
 
 func NewServer(addr string) *Server { return &Server{addr: addr} }
@@ -78,26 +80,34 @@ func (s *Server) handle(pkt []byte, from *net.UDPAddr) {
 		s.setPF(from)
 		s.write(ackFor(pkt, PullAck), from)
 	case TxAck:
-		if len(pkt) > 12 {
-			log.Printf("udp: TX_ACK %s", string(pkt[12:]))
+		token, errStr := decodeTxAck(pkt)
+		if errStr != "" {
+			log.Printf("udp: TX_ACK error=%s", errStr)
+		}
+		if s.OnTxAck != nil {
+			s.OnTxAck(token, errStr)
 		}
 	}
 }
 
-// SendDownlink pushes a txpk to the learned packet-forwarder address.
-func (s *Server) SendDownlink(tx *TXPacket) error {
+// SendTX pushes a txpk to the learned packet-forwarder address and returns the
+// PULL_RESP token so the caller can correlate the eventual TX_ACK (used for the
+// RX1→RX2 fallback).
+func (s *Server) SendTX(tx *TXPacket) ([2]byte, error) {
 	s.mu.Lock()
 	pf, conn := s.pf, s.conn
 	s.mu.Unlock()
+	var token [2]byte
 	if pf == nil || conn == nil {
-		return errors.New("no packet forwarder registered yet (no PULL_DATA seen)")
+		return token, errors.New("no packet forwarder registered yet (no PULL_DATA seen)")
 	}
-	pkt, err := encodePullResp(randToken(), tx)
+	token = randToken()
+	pkt, err := encodePullResp(token, tx)
 	if err != nil {
-		return err
+		return token, err
 	}
 	_, err = conn.WriteToUDP(pkt, pf)
-	return err
+	return token, err
 }
 
 func (s *Server) setPF(a *net.UDPAddr) {

@@ -85,3 +85,25 @@ func ackFor(pkt []byte, ackID byte) []byte {
 	}
 	return []byte{ProtoVersion, t0, t1, ackID}
 }
+
+// decodeTxAck extracts the echoed token and error from a TX_ACK. Header is
+// version(1) token(2) id(1) gatewayEUI(8) then optional JSON
+// {"txpk_ack":{"error":"NONE"}}. An empty or "NONE" error means the downlink
+// was accepted for transmission.
+func decodeTxAck(pkt []byte) (token [2]byte, errStr string) {
+	if len(pkt) >= 3 {
+		token[0], token[1] = pkt[1], pkt[2]
+	}
+	if len(pkt) <= 12 {
+		return token, ""
+	}
+	var body struct {
+		Ack struct {
+			Error string `json:"error"`
+		} `json:"txpk_ack"`
+	}
+	if json.Unmarshal(pkt[12:], &body) != nil || body.Ack.Error == "NONE" {
+		return token, ""
+	}
+	return token, body.Ack.Error
+}

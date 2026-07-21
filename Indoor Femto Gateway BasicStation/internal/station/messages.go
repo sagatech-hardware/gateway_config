@@ -53,17 +53,25 @@ type RouterConfig struct {
 	DRs     [][3]int `json:"DRs"`
 }
 
-// Dnmsg is a downlink the LNS asks the gateway to transmit. Xtime encodes the
-// concentrator time for the RX window (see the bridge's xtime bookkeeping).
+// Dnmsg is a downlink the LNS asks the gateway to transmit. Class-A downlinks
+// carry the RX1/RX2 window parameters and a reference xtime (the uplink's), so
+// the actual TX time is xtime + RxDelay. Class-C (dC=2) transmit immediately.
+// Some LNS variants instead send a single window as DR/Freq with xtime already
+// set to the TX time; the translator handles both.
 type Dnmsg struct {
 	MsgType  string `json:"msgtype"`
+	DC       int    `json:"dC"` // device class: 0=A, 1=B, 2=C
 	DevEui   string `json:"DevEui"`
 	Pdu      string `json:"pdu"` // hex PHYPayload
-	DR       int    `json:"DR"`
-	Freq     int    `json:"Freq"`
-	Xtime    int64  `json:"xtime"`
-	Rctx     int64  `json:"rctx"`
 	Priority int    `json:"priority"`
 	RxDelay  int    `json:"RxDelay"`
+	RX1DR    int    `json:"RX1DR"`
+	RX1Freq  int    `json:"RX1Freq"`
+	RX2DR    int    `json:"RX2DR"`
+	RX2Freq  int    `json:"RX2Freq"`
+	DR       int    `json:"DR"`   // single-window form
+	Freq     int    `json:"Freq"` // single-window form
+	Xtime    int64  `json:"xtime"`
+	Rctx     int64  `json:"rctx"`
 	DIID     int64  `json:"diid"`
 }
