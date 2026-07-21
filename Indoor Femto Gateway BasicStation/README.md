@@ -37,16 +37,41 @@ registered gateway by changing one value (`ROUTER_ID`) in its `.env`.
 
 ## Quick start
 
-The mipsle binary is committed under `bin/`, so no build is required:
+The mipsle binary is committed under `bin/`, so no build is required. Two ways
+to install — both idempotent, both back up `global_conf.json` first.
+
+### A. On the gateway (log in and run it)
+
+```sh
+wget -O /tmp/gwi.sh "https://github.com/sagatech-hardware/gateway_config/raw/main/Indoor%20Femto%20Gateway%20BasicStation/install/gateway-install.sh"
+sh /tmp/gwi.sh
+```
+
+[`install/gateway-install.sh`](install/gateway-install.sh) runs entirely on the
+device: it fetches the binary + init script, **derives `ROUTER_ID` from the
+gateway MAC automatically** (`ROUTER_ID = 0016C0-<MAC>` — no `-e` to pass and
+nothing to hand-edit), points `lora_pkt_fwd` at `127.0.0.1:1700`, installs the
+service + watchdogs, and sets the **WAN from [`wan.env`](wan.env)**. Overrides:
+`ROUTER_ID=`, `MAC_IFACE=`, `REGION=`, `CUPS_URI=` as env vars.
+
+### B. From a dev box (push over SSH)
 
 ```bash
 ./install/install.sh -g 192.168.55.1 -e 0016C0-80029C4572D3
 ```
 
-`install.sh` pushes the binary, its `.env`, and the init script over SSH
-(dropbear-safe) to `/mnt/data/pktfwd-station-bridge/`, points `lora_pkt_fwd` at
-`127.0.0.1:1700`, adds a watchdog cron, and starts the service. It is idempotent
-and backs up `global_conf.json` first.
+[`install/install.sh`](install/install.sh) pushes the binary, its `.env`, and
+the init script over SSH (dropbear-safe) to `/mnt/data/pktfwd-station-bridge/`,
+points `lora_pkt_fwd` at `127.0.0.1:1700`, adds a watchdog cron, and starts the
+service. Here `ROUTER_ID` is passed explicitly with `-e`.
+
+Verify either way:
+
+```sh
+logread | grep pktfwd                          # bridge → CUPS/LNS handshake
+cat /mnt/data/pktfwd-station-bridge/.env | grep ROUTER_ID
+crontab -l                                      # keep-alive + conn-check crons
+```
 
 ## Configuration — `.env`
 
@@ -67,6 +92,27 @@ committed `.env`). Any key can be overridden by a process environment variable.
 **Manual credentials.** If your LNS lets you download the gateway's
 `tc.crt`/`tc.key`, drop them (plus `tc.trust`, `tc.uri`) into `TC_DIR` and the
 bridge skips CUPS entirely.
+
+**Auto `ROUTER_ID`.** With the on-gateway installer (A) you don't set
+`ROUTER_ID` at all — it is `0016C0-<eth0 MAC>`, derived on the device. Override
+the prefix with `ROUTER_PREFIX=` or pin the whole value with `ROUTER_ID=`.
+
+## WAN — `wan.env`
+
+Carrier / cellular settings live in [`wan.env`](wan.env) (a `.env`-style file),
+kept **separate from the bridge `.env`**. The on-gateway installer applies it to
+`/etc/config/network` via UCI, so the carrier is changed in one place — no
+hand-editing `/etc/config/network`. It is read from `/etc/gemtek/wan.env` first
+(put real SIM creds there to keep them out of git), then `./wan.env`, then the
+repo copy.
+
+## Connection watchdog
+
+The installer adds two crons: a **keep-alive** (restart the bridge every minute
+if it died) and [`check_no_connection_reboot.sh`](install/check_no_connection_reboot.sh)
+every 30 min, which **reboots the gateway when the internet is unreachable** so a
+stuck cellular link self-recovers. It gates on internet reachability, not the
+bridge↔LNS link, so an LNS-side outage won't cause reboot loops.
 
 ## Build
 
