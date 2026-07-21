@@ -28,7 +28,11 @@ UDP_PORT="${UDP_PORT:-1700}"
 log() { printf '[install] %s\n' "$1"; }
 
 fetch() { # $1=relpath under RAW_BASE  $2=dest
-	wget -q -O "$2" "$RAW_BASE/$1" || { log "ERR fetch $1"; return 1; }
+	# Gateways often lack a CA bundle → GitHub TLS verify fails. Try verified
+	# first, then fall back to --no-check-certificate (own repo, acceptable).
+	wget -q -O "$2" "$RAW_BASE/$1" \
+		|| wget -q --no-check-certificate -O "$2" "$RAW_BASE/$1" \
+		|| { log "ERR fetch $1"; return 1; }
 	[ -s "$2" ] || { log "ERR empty $1"; return 1; }
 }
 
