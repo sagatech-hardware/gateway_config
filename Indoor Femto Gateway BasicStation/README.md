@@ -47,6 +47,14 @@ wget -O /tmp/gwi.sh "https://github.com/sagatech-hardware/gateway_config/raw/mai
 sh /tmp/gwi.sh
 ```
 
+> **`wget` fails with `cannot verify github.com's certificate` / `unable to
+> locally verify the issuer's authority`?** The gateway has no CA bundle. Add
+> `--no-check-certificate` to fetch anyway:
+>
+> ```sh
+> wget --no-check-certificate -O /tmp/gwi.sh "https://github.com/sagatech-hardware/gateway_config/raw/main/Indoor%20Femto%20Gateway%20BasicStation/install/gateway-install.sh"
+> ```
+
 [`install/gateway-install.sh`](install/gateway-install.sh) runs entirely on the
 device: it fetches the binary + init script, **derives `ROUTER_ID` from the
 gateway MAC automatically** (`ROUTER_ID = 0016C0-<MAC>` — no `-e` to pass and
