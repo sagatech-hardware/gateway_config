@@ -1,0 +1,11 @@
+# host-only build + logs (the mipsle release binary bin/pktfwd-station-bridge
+# IS committed, to match the repo's wget-install convention)
+/bin/*.host
+/backups/
+*.log
+
+# never commit provisioned LNS credentials
+tc.uri
+tc.trust
+tc.crt
+tc.key

@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+# OpenWrt (Barrier Breaker) init script for pktfwd-station-bridge.
+# start-stop-daemon because BB 14.07 predates procd on this hardware.
+# The binary loads its .env from its own directory automatically.
+
+START=99
+STOP=10
+
+NAME="pktfwd-station-bridge"
+DIR="/mnt/data/$NAME"
+BIN="$DIR/$NAME"
+PID="/var/run/$NAME.pid"
+
+start() {
+	echo "Starting $NAME"
+	start-stop-daemon -S -b -m -p "$PID" -x "$BIN"
+}
+
+stop() {
+	echo "Stopping $NAME"
+	start-stop-daemon -K -p "$PID"
+}
