@@ -7,24 +7,34 @@ that way across reboots. Two scripts do the work:
 |---|---|---|
 | `femto-deploy.sh` | dev machine (**Linux or Windows**) | discovers the gateway + credentials, pushes the provisioner, polls the result |
 | `femto-provision.sh` | the gateway (busybox `ash`) | CUPS config + Amazon Root CA 1 + the 1-byte station patch + `sync` + verify |
+| `femto-firmware.sh` | the gateway (busybox `ash`) | is this BasicStation firmware? if not, flash `fw_pkt_*.tar.gz` the way the web UI would |
+| `femto-fw-stage.sh` | dev machine (sourced by `femto-deploy.sh`) | pushes the 10 MB package, launches the flash detached, waits out the reboot |
 
-Background: `docs/femto-provisioning.md` (layer map, why each step) and
-`docs/femto-station-eeprom-parse-bug.md` (how the binary patch was derived).
+Background: `docs/femto-provisioning.md` (layer map, why each step),
+`docs/femto-station-eeprom-parse-bug.md` (how the binary patch was derived) and
+`docs/femto-firmware-upgrade.md` (the reversed web-UI upgrade chain).
 Installed and verified across a reboot on 2026-08-01.
 
 ## 1. Get the scripts
 
 Repo folder: <https://github.com/sagatech-hardware/gateway_config/tree/main/Indoor%20Femto%20Gateway%20BasicStation>
 
-Both files must land in the **same directory** — `femto-deploy.sh` reads `femto-provision.sh` next
-to itself.
+All files must land in the **same directory** — `femto-deploy.sh` reads the other scripts, and
+the firmware package, next to itself.
 
-**Linux / macOS / Git Bash — just the two scripts:**
+**Linux / macOS / Git Bash — just the scripts:**
 
 ```sh
-mkdir -p femto && cd femto && for f in femto-deploy.sh femto-provision.sh; do
+mkdir -p femto && cd femto && for f in femto-deploy.sh femto-provision.sh femto-firmware.sh femto-fw-stage.sh; do
   curl -fsSL "https://raw.githubusercontent.com/sagatech-hardware/gateway_config/main/Indoor%20Femto%20Gateway%20BasicStation/$f" -o "$f"
 done && chmod +x femto-*.sh
+```
+
+Add the firmware package too if any unit might still be on the 3.x packet-forwarder firmware
+(10 MB; only read when an upgrade is actually needed):
+
+```sh
+curl -fsSLO "https://raw.githubusercontent.com/sagatech-hardware/gateway_config/main/Indoor%20Femto%20Gateway%20BasicStation/fw_pkt_4.00.19_9816ff6b.tar.gz"
 ```
 
 **Whole folder (adds this runbook and the watchdog scripts):**
@@ -47,7 +57,7 @@ cd gateway_config && git sparse-checkout set 'Indoor Femto Gateway BasicStation'
 ```powershell
 $b='https://raw.githubusercontent.com/sagatech-hardware/gateway_config/main/Indoor%20Femto%20Gateway%20BasicStation'
 New-Item -ItemType Directory -Force femto | Out-Null
-'femto-deploy.sh','femto-provision.sh' | % { Invoke-WebRequest "$b/$_" -OutFile "femto\$_" }
+'femto-deploy.sh','femto-provision.sh','femto-firmware.sh','femto-fw-stage.sh' | % { Invoke-WebRequest "$b/$_" -OutFile "femto\$_" }
 ```
 
 ## 2. Requirements on the dev machine
@@ -66,7 +76,10 @@ localized Windows works.
 off the link, and Browan's factory naming gives both the AP name and the root password from the
 **last 6 MAC characters**: `80:02:9C:45:72:D3` → `AP-4572D3` / `browan@4572D3`. Every candidate is
 confirmed by a real SSH login first (a 4-character suffix is tried as a fallback for units using the
-shorter scheme).
+shorter scheme). Firmware generations older than that scheme use the vendor default **`root` /
+`root`**, which is tried **last** — only once every MAC-derived candidate has been refused, so a unit
+that does follow the factory scheme never ends up authenticating on the weaker default. The line the
+wrapper prints says which one was accepted (`legacy vendor default root password` for the old units).
 
 The MAC is always looked up on the **AP side**, even when deploying over the LAN: on this unit the
 `eth0.2` MAC is the base MAC **+1** and the AP's own BSSID is **+2**, so those sources give the wrong
@@ -97,7 +110,26 @@ Idempotent — safe to re-run. Three guards run before anything is pushed: for a
 `AP-*` connection must be active, the host must answer a ping, and a derived password must be
 accepted by SSH. Each failure exits non-zero and prints the fix without touching the gateway.
 
-`install`, in order:
+### 4a. Firmware stage (runs first, usually a no-op)
+
+`install` begins by asking the gateway whether it runs BasicStation at all — `/bin/station` present
+and `profile.system.fw_version` in the 4.x generation. A unit that already is reports
+`no upgrade needed` in a second, nothing is uploaded, and provisioning continues.
+
+A unit still on the 3.x packet-forwarder firmware cannot be provisioned at all (`femto-provision.sh`
+preflights on `/opt/basicstation/station`), so the package is flashed first:
+staged on `/mnt/data`, validated through the vendor's own CRC/magic/version gates, written to the
+**inactive** firmware bank, then the box reboots into it and the run continues. Expect ~5-10 min,
+most of it the 10 MB push through `cat >`. Run the check on its own with:
+
+```sh
+./femto-deploy.sh 10.4.13.48 firmware
+```
+
+The upgrade is A/B — the bank that was running is left intact as a fallback. Details and the
+reversed web-UI chain: `docs/femto-firmware-upgrade.md`.
+
+`install`, after the firmware stage, in order:
 
 1. **Backup** every file it touches into `/mnt/data/femto-provision.bak` (mirrored tree, never
    overwritten → the first run preserves the pristine vendor state). `/mnt/data` is a separate
@@ -175,7 +207,7 @@ Restores every file from `/mnt/data/femto-provision.bak` (including the unpatche
 | Symptom | Cause / fix |
 |---|---|
 | `not associated with a femto AP` | laptop drifted to another network; the script lists the `AP-*` SSIDs it can see |
-| `no derived password accepted` | unit does not follow `browan@<last 6 MAC chars>` (nor the 4-char variant) — check its label; the suffixes tried are printed |
+| `no derived password ... accepted` | unit follows neither `browan@<last 6 MAC chars>` (nor the 4-char variant) nor the legacy `root`/`root` — check its label; the suffixes tried are printed |
 | `need one of: sshpass, plink …` | install one (see §2) or run from WSL |
 | `has an unexpected byte at 237679` | firmware differs from `4.00.19-opdk`; do **not** force — re-derive the offset per `docs/femto-station-eeprom-parse-bug.md` |
 | `FAIL log has RAL:CRIT` right after install | an unpatched instance was started by cron between stop and patch; re-run `verify` after a minute (cron restarts it patched) |

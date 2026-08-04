@@ -22,7 +22,10 @@ LOG="/tmp/station.log"
 PATCH_OFF=237679
 MD5_BYTE_VENDOR="6b2b98fea11e51af3043b192f719bd69"
 MD5_BYTE_FIXED="00d9712ec5eb70807a73b8d2d6ead90d"
-MD5_TRUST_PEM="7095142f080d1d25221eec161ff14223"
+# Identity of Amazon Root CA 1, not of a file: CUPS re-writes cups.trust in DER while
+# this script seeds PEM, and comparing bytes turned that into a FAIL. See
+# docs/femto-provisioning.md.
+TRUST_SHA256="8ECDE6884F3D87B1125BA31AC3FCB13D7016DE7F57CC904FE1CB97C6AE98196E"
 
 say() { echo "[provision] $*"; }
 die() { echo "[provision] ERROR: $*"; echo "PROVISION_RESULT=FAIL"; exit 1; }
@@ -52,7 +55,13 @@ rqXRfboQnoZsG4q5WTP468SQvvG5
 PEM
 }
 
-md5_of() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+# Fingerprint of whichever encoding the file happens to be in; empty if unreadable.
+cert_sha256() {
+	for form in PEM DER; do
+		fp=$(openssl x509 -inform $form -in "$1" -noout -fingerprint -sha256 2>/dev/null)
+		[ -n "$fp" ] && { echo "${fp#*=}" | tr -d ':' | tr '[:lower:]' '[:upper:]'; return; }
+	done
+}
 
 patch_byte_state() {
 	dd if="$1" bs=1 skip=$PATCH_OFF count=1 2>/dev/null | md5sum | cut -d' ' -f1
@@ -195,14 +204,28 @@ check() {
 	return 1
 }
 
+check_trust() {
+	got=$(cert_sha256 "$2")
+	[ -n "$got" ] && { check "$1" "$got" "$TRUST_SHA256"; return $?; }
+	# No fingerprint has two very different causes. A unit without openssl cannot be
+	# judged either way, but with openssl present an unparseable file is a real fault
+	# — a corrupt or truncated trust must not pass as "unverifiable".
+	command -v openssl > /dev/null 2>&1 || {
+		say "WARN $1: no openssl on this unit, certificate identity unverified"
+		return 0
+	}
+	say "FAIL $1 (not a readable certificate)"
+	return 1
+}
+
 verify() {
 	rc=0
 	check "$STATION_SRC patched" "$(patch_byte_state $STATION_SRC)" "$MD5_BYTE_FIXED" || rc=1
 	check "$BS_DIR/station patched" "$(patch_byte_state $BS_DIR/station)" "$MD5_BYTE_FIXED" || rc=1
 	check "cups.uri" "$(cat $BS_DIR/cups.uri 2>/dev/null)" "$CUPS_URI" || rc=1
-	check "cups.trust = Amazon Root CA 1" "$(md5_of $BS_DIR/cups.trust)" "$MD5_TRUST_PEM" || rc=1
+	check_trust "cups.trust = Amazon Root CA 1" "$BS_DIR/cups.trust" || rc=1
 	check "cups.crt empty (server auth)" "$(wc -c < $BS_DIR/cups.crt 2>/dev/null | tr -d ' ')" "0" || rc=1
-	check "default trust reseeded" "$(md5_of $DEF_DIR/cups-boot_def.trust)" "$MD5_TRUST_PEM" || rc=1
+	check_trust "default trust reseeded" "$DEF_DIR/cups-boot_def.trust" || rc=1
 
 	if [ -s "$BS_DIR/tc.uri" ]; then
 		say "OK   tc.uri served by CUPS: $(cat $BS_DIR/tc.uri)"

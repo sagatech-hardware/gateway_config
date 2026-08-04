@@ -5,6 +5,7 @@ Two independent tool sets live here:
 | Set | Files | Target |
 |---|---|---|
 | **Femto provisioning** | `femto-provision.sh`, `femto-deploy.sh` | Gemtek/Browan WLRGFM-100 femto — full ThingPark chain (CUPS URI + Amazon Root CA 1 + server-auth creds + the 1-byte station patch), reboot-persistent. See [RUNBOOK.md](RUNBOOK.md). |
+| **Femto firmware** | `femto-firmware.sh`, `femto-fw-stage.sh`, `fw_pkt_4.00.19_9816ff6b.tar.gz` | Same femto — checks for BasicStation firmware and flashes the package if it is missing, reproducing the web UI's upgrade chain. Runs automatically as the first stage of `install`. See [docs/femto-firmware-upgrade.md](../docs/femto-firmware-upgrade.md). |
 | **Connection watchdog** | `conn_watchdog.sh`, `manage_conn_watchdog.sh` | Browan WSMS-155 — reboot-on-LNS-loss self recovery (documented further down). |
 
 # Femto WLRGFM-100 provisioning
@@ -17,8 +18,9 @@ preconditions, `install`/`verify`/`rollback`, recovery scenarios and troubleshoo
 Quick start (from this directory, with the machine on the gateway's Wi-Fi):
 
 ```sh
-./femto-deploy.sh                     # 192.168.55.1, action install
-./femto-deploy.sh 10.4.13.48 verify   # or over the LAN
+./femto-deploy.sh                       # 192.168.55.1, action install (firmware stage included)
+./femto-deploy.sh 10.4.13.48 verify     # or over the LAN
+./femto-deploy.sh 10.4.13.48 firmware   # firmware check on its own; flashes only if needed
 ```
 
 # Gateway connection watchdog

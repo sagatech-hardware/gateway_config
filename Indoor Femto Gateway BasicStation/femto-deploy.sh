@@ -8,6 +8,8 @@
 # No credentials are configured: the gateway is discovered at its AP address, its
 # MAC is read off the link, and Browan's factory naming derives both the AP name
 # (AP-<last 6 MAC chars>) and the root password (browan@<last 6 MAC chars>).
+# Older firmware generations predate that scheme and use root/root — tried as a
+# last resort, after every MAC-derived candidate has been refused.
 #
 # dropbear on the gateway has no scp/sftp, so the script is streamed through
 # `cat >`. Provisioning stops BasicStation, which sometimes drops the SSH session,
@@ -23,8 +25,15 @@ HOST="${1:-$DISCOVER_IP}"
 SRC="$(dirname "$0")/femto-provision.sh"
 REMOTE="/tmp/femto-provision.sh"
 RLOG="/tmp/femto-provision.log"
+FWSRC="$(dirname "$0")/femto-firmware.sh"
+STAGESRC="$(dirname "$0")/femto-fw-stage.sh"
+FWREMOTE="/tmp/femto-firmware.sh"
+FWTAR="$(dirname "$0")/fw_pkt_4.00.19_9816ff6b.tar.gz"
+FWLOG="/tmp/femto-firmware.log"
+LEGACY_PASS="root"
 POLL_TRIES=40
 POLL_SLEEP=5
+BOOT_TRIES=60
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
 case "$(uname -s 2> /dev/null)" in
@@ -170,6 +179,9 @@ suffix_candidates() {
 # ---------- main ----------
 
 [ -f "$SRC" ] || { echo "missing $SRC"; exit 1; }
+[ -f "$FWSRC" ] || { echo "missing $FWSRC"; exit 1; }
+[ -f "$STAGESRC" ] || { echo "missing $STAGESRC"; exit 1; }
+. "$STAGESRC"
 pick_pw_tool
 [ -n "$PW_TOOL" ] || {
 	echo "need one of: sshpass, plink (PuTTY), or an OpenSSH client >= 8.4"
@@ -179,8 +191,8 @@ pick_pw_tool
 }
 
 case "$ACTION" in
-install | verify | rollback | status) ;;
-*) echo "usage: $0 [host] [install|verify|rollback|status]"; exit 2 ;;
+install | verify | rollback | status | firmware) ;;
+*) echo "usage: $0 [host] [install|verify|rollback|status|firmware]"; exit 2 ;;
 esac
 
 # The AP address only exists over the gateway's own Wi-Fi, and laptops drift back
@@ -217,13 +229,29 @@ for suf in $CANDS; do
 	done
 done
 
+# Older firmware generations ship the vendor default root/root instead of the
+# MAC-derived password. Tried only after every derived candidate has failed, so a
+# unit that follows the factory scheme never authenticates on the weaker default.
+if [ -z "$PASS" ] && ssh_try "$LEGACY_PASS"; then
+	PASS="$LEGACY_PASS"
+	# No suffix was accepted, so the AP name cannot be derived from the password;
+	# wait_reboot needs one to re-associate, hence the live SSID then first candidate.
+	AP="$(active_ap)"
+	AP="${AP:-AP-$(echo "$CANDS" | head -1)}"
+fi
+
 [ -n "$PASS" ] || {
 	echo "suffixes tried: $(echo "$CANDS" | tr '\n' ' ')"
-	echo "no derived password accepted by root@$HOST — check the unit's factory scheme"
+	echo "no derived password (nor the legacy root/root default) accepted by root@$HOST"
+	echo "— check the unit's factory scheme"
 	echo "(expected AP-<last 6 MAC chars> / browan@<last 6 MAC chars>)"
 	exit 1
 }
-echo "-- $AP via $PW_TOOL, root password derived from MAC suffix ${PASS#browan@}"
+if [ "$PASS" = "$LEGACY_PASS" ]; then
+	echo "-- $AP via $PW_TOOL, legacy vendor default root password (older firmware)"
+else
+	echo "-- $AP via $PW_TOOL, root password derived from MAC suffix ${PASS#browan@}"
+fi
 
 echo "== femto $HOST: $ACTION =="
 # tr strips CRs so a Windows checkout of the script still parses in busybox ash.
@@ -231,6 +259,20 @@ tr -d '\r' < "$SRC" | ssh_femto "cat > $REMOTE && chmod +x $REMOTE" || {
 	echo "push failed"
 	exit 1
 }
+tr -d '\r' < "$FWSRC" | ssh_femto "cat > $FWREMOTE" || {
+	echo "push failed"
+	exit 1
+}
+
+case "$ACTION" in
+firmware)
+	firmware_stage
+	exit $?
+	;;
+install)
+	firmware_stage || exit 1
+	;;
+esac
 
 if [ "$ACTION" = verify ] || [ "$ACTION" = status ]; then
 	ssh_femto "sh $REMOTE $ACTION"
